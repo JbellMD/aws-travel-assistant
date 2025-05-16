@@ -11,31 +11,47 @@
 </head>
 <body>
 
+<header class="site-header">
+    <div class="container">
+        <h1 class="site-title">
+            <i class="fas fa-globe-americas"></i>
+            Travel Explorer
+        </h1>
+        <p class="site-description">Your AI-powered travel companion for discovering, planning, and booking your perfect adventure</p>
+    </div>
+</header>
+
 <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container">
-        <a class="navbar-brand" href="#">
-            <i class="fas fa-plane-departure me-2"></i>
-            Travel Assistant
-        </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item">
-                    <a class="nav-link active" data-bs-toggle="tab" href="#chat">Chat</a>
+            <ul class="nav nav-tabs mb-4" id="pills-tab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pills-chat-tab" data-bs-toggle="pill" data-bs-target="#chat" type="button" role="tab" aria-controls="chat" aria-selected="true">
+                        <i class="fas fa-comments"></i> Chat
+                    </button>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#ideation">Travel Ideas</a>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-ideation-tab" data-bs-toggle="pill" data-bs-target="#ideation" type="button" role="tab" aria-controls="ideation" aria-selected="false">
+                        <i class="fas fa-lightbulb"></i> Travel Ideas
+                    </button>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#availability">Check Availability</a>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-availability-tab" data-bs-toggle="pill" data-bs-target="#availability" type="button" role="tab" aria-controls="availability" aria-selected="false">
+                        <i class="fas fa-calendar-check"></i> Availability
+                    </button>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#booking">Book Travel</a>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-booking-tab" data-bs-toggle="pill" data-bs-target="#booking" type="button" role="tab" aria-controls="booking" aria-selected="false">
+                        <i class="fas fa-ticket-alt"></i> Book
+                    </button>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#bookings-qa">My Bookings</a>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-bookings-qa-tab" data-bs-toggle="pill" data-bs-target="#bookings-qa" type="button" role="tab" aria-controls="bookings-qa" aria-selected="false">
+                        <i class="fas fa-question-circle"></i> Support
+                    </button>
                 </li>
             </ul>
         </div>
@@ -57,11 +73,9 @@
                     <span></span>
                     <span></span>
                 </div>
-                <div class="input-container">
-                    <input type="text" id="messageInput" placeholder="Type your message here..." class="form-control">
-                    <button id="sendButton" class="btn btn-primary">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
+                <div class="message-input-container">
+                    <input type="text" id="messageInput" placeholder="Ask about travel destinations, accommodations, or activities..." class="form-control">
+                    <button id="sendButton" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i> Send</button>
                 </div>
             </div>
         </div>
@@ -421,9 +435,18 @@
     </div>
 </div>
 
-<footer class="bg-dark text-white text-center py-3 mt-5">
-    <div class="container">
-        <p class="mb-0">© 2025 Travel Assistant. Powered by AWS Bedrock and Lambda.</p>
+<footer class="site-header mt-5">
+    <div class="container text-center py-4">
+        <h4 class="mb-3">Travel Explorer</h4>
+        <div class="mb-3">
+            <i class="fas fa-plane fa-fw me-2"></i>
+            <i class="fas fa-hotel fa-fw me-2"></i>
+            <i class="fas fa-umbrella-beach fa-fw me-2"></i>
+            <i class="fas fa-mountain fa-fw me-2"></i>
+            <i class="fas fa-route fa-fw"></i>
+        </div>
+        <p class="mb-1">© 2025 Travel Explorer. Powered by AWS Bedrock and Lambda.</p>
+        <small class="text-white-50">Your AI-powered travel companion</small>
     </div>
 </footer>
 
