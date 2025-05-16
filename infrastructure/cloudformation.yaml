@@ -1,0 +1,507 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Travel Booking Assistant Infrastructure with Lambda, API Gateway, Bedrock, and S3'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment type
+
+  LambdaMemorySize:
+    Type: Number
+    Default: 1024
+    Description: Lambda function memory size in MB
+
+  LambdaTimeout:
+    Type: Number
+    Default: 30
+    Description: Lambda function timeout in seconds
+
+  ApiName:
+    Type: String
+    Default: travel-assistant-api
+    Description: API Gateway name
+
+  StageName:
+    Type: String
+    Default: v1
+    Description: API Gateway stage name
+
+  CognitoEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Whether to enable Cognito user authentication
+
+Resources:
+  # S3 Buckets
+  FAQBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'travel-assistant-faq-${AWS::AccountId}-${AWS::Region}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+
+  KnowledgeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'travel-assistant-knowledge-${AWS::AccountId}-${AWS::Region}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+
+  BookingsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'travel-assistant-bookings-${AWS::AccountId}-${AWS::Region}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+
+  DeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'travel-assistant-deployment-${AWS::AccountId}-${AWS::Region}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+
+  # IAM Role for Lambda Functions
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock-agent:InvokeAgent
+                  - bedrock-agent-runtime:InvokeAgent
+                  - bedrock-agent:StartIngestionJob
+                  - bedrock-agent:GetIngestionJob
+                Resource: '*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                  - s3:DeleteObject
+                Resource:
+                  - !GetAtt FAQBucket.Arn
+                  - !Sub '${FAQBucket.Arn}/*'
+                  - !GetAtt KnowledgeBucket.Arn
+                  - !Sub '${KnowledgeBucket.Arn}/*'
+                  - !GetAtt BookingsBucket.Arn
+                  - !Sub '${BookingsBucket.Arn}/*'
+
+  # Lambda Functions
+  ChatClientLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'travel-assistant-chat-client-${Environment}'
+      Runtime: python3.10
+      Handler: lambda_chat_client.app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Environment:
+        Variables:
+          FAQ_BUCKET: !Ref FAQBucket
+          KB_BUCKET: !Ref KnowledgeBucket
+          BOOKINGS_BUCKET: !Ref BookingsBucket
+          DEFAULT_TEXT_MODEL: 'anthropic.claude-3-sonnet-20240229-v1:0'
+          DEFAULT_EMBEDDING_MODEL: 'amazon.titan-embed-text-v1'
+          GUARDRAILS_AGENT_ID: '' # To be updated after agent creation
+          GUARDRAILS_AGENT_ALIAS_ID: '' # To be updated after agent creation
+          AWS_REGION: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+      Code:
+        S3Bucket: !Ref DeploymentBucket
+        S3Key: 'lambda/travel-assistant-lambdas.zip'
+
+  IdeationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'travel-assistant-ideation-${Environment}'
+      Runtime: python3.10
+      Handler: lambda_ideation.app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Environment:
+        Variables:
+          FAQ_BUCKET: !Ref FAQBucket
+          KB_BUCKET: !Ref KnowledgeBucket
+          BOOKINGS_BUCKET: !Ref BookingsBucket
+          IDEATION_MODEL_ID: 'anthropic.claude-3-sonnet-20240229-v1:0'
+          KNOWLEDGE_BASE_ID: '' # To be updated after knowledge base creation
+          AWS_REGION: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+      Code:
+        S3Bucket: !Ref DeploymentBucket
+        S3Key: 'lambda/travel-assistant-lambdas.zip'
+
+  AvailabilityLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'travel-assistant-availability-${Environment}'
+      Runtime: python3.10
+      Handler: lambda_availability.app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Environment:
+        Variables:
+          LOYALTY_SYSTEM_URL: '' # To be updated with external system URL
+          AVAILABILITY_SYSTEM_URL: '' # To be updated with external system URL
+          EXTERNAL_API_KEY: '' # To be updated with API key
+          AWS_REGION: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+      Code:
+        S3Bucket: !Ref DeploymentBucket
+        S3Key: 'lambda/travel-assistant-lambdas.zip'
+
+  BookingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'travel-assistant-booking-${Environment}'
+      Runtime: python3.10
+      Handler: lambda_booking.app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Environment:
+        Variables:
+          FAQ_BUCKET: !Ref FAQBucket
+          KB_BUCKET: !Ref KnowledgeBucket
+          BOOKINGS_BUCKET: !Ref BookingsBucket
+          BOOKING_SYSTEM_URL: '' # To be updated with external system URL
+          LOYALTY_SYSTEM_URL: '' # To be updated with external system URL
+          EXTERNAL_API_KEY: '' # To be updated with API key
+          AWS_REGION: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+      Code:
+        S3Bucket: !Ref DeploymentBucket
+        S3Key: 'lambda/travel-assistant-lambdas.zip'
+
+  BookingsQALambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'travel-assistant-bookings-qa-${Environment}'
+      Runtime: python3.10
+      Handler: lambda_bookings_qa.app.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Environment:
+        Variables:
+          FAQ_BUCKET: !Ref FAQBucket
+          KB_BUCKET: !Ref KnowledgeBucket
+          BOOKINGS_BUCKET: !Ref BookingsBucket
+          QA_MODEL_ID: 'anthropic.claude-3-sonnet-20240229-v1:0'
+          AWS_REGION: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+      Code:
+        S3Bucket: !Ref DeploymentBucket
+        S3Key: 'lambda/travel-assistant-lambdas.zip'
+
+  # Lambda Permissions for API Gateway
+  ChatClientLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ChatClientLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TravelAssistantApi}/*/*'
+
+  IdeationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref IdeationLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TravelAssistantApi}/*/*'
+
+  AvailabilityLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AvailabilityLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TravelAssistantApi}/*/*'
+
+  BookingLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BookingLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TravelAssistantApi}/*/*'
+
+  BookingsQALambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BookingsQALambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TravelAssistantApi}/*/*'
+
+  # Cognito User Pool (Optional)
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Condition: CreateCognitoResources
+    Properties:
+      UserPoolName: !Sub 'travel-assistant-users-${Environment}'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: CreateCognitoResources
+    Properties:
+      ClientName: !Sub 'travel-assistant-web-client-${Environment}'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      RefreshTokenValidity: 30
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: days
+        IdToken: days
+        RefreshToken: days
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+
+  # API Gateway
+  TravelAssistantApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Ref ApiName
+      Description: !Sub "Travel Assistant API - ${Environment}"
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Gateway Resources
+  ChatResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt TravelAssistantApi.RootResourceId
+      PathPart: chat
+      RestApiId: !Ref TravelAssistantApi
+
+  IdeationResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt TravelAssistantApi.RootResourceId
+      PathPart: ideation
+      RestApiId: !Ref TravelAssistantApi
+
+  AvailabilityResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt TravelAssistantApi.RootResourceId
+      PathPart: availability
+      RestApiId: !Ref TravelAssistantApi
+
+  BookingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt TravelAssistantApi.RootResourceId
+      PathPart: booking
+      RestApiId: !Ref TravelAssistantApi
+
+  BookingsQAResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt TravelAssistantApi.RootResourceId
+      PathPart: bookings-qa
+      RestApiId: !Ref TravelAssistantApi
+
+  # API Gateway Methods and Integrations
+  # Chat API
+  ChatMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ChatClientLambda.Arn}/invocations'
+      ResourceId: !Ref ChatResource
+      RestApiId: !Ref TravelAssistantApi
+
+  # Ideation API
+  IdeationMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${IdeationLambda.Arn}/invocations'
+      ResourceId: !Ref IdeationResource
+      RestApiId: !Ref TravelAssistantApi
+
+  # Availability API
+  AvailabilityMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AvailabilityLambda.Arn}/invocations'
+      ResourceId: !Ref AvailabilityResource
+      RestApiId: !Ref TravelAssistantApi
+
+  # Booking API
+  BookingMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookingLambda.Arn}/invocations'
+      ResourceId: !Ref BookingResource
+      RestApiId: !Ref TravelAssistantApi
+
+  # Bookings Q&A API
+  BookingsQAMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookingsQALambda.Arn}/invocations'
+      ResourceId: !Ref BookingsQAResource
+      RestApiId: !Ref TravelAssistantApi
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ChatMethod
+      - IdeationMethod
+      - AvailabilityMethod
+      - BookingMethod
+      - BookingsQAMethod
+    Properties:
+      RestApiId: !Ref TravelAssistantApi
+      StageName: !Ref StageName
+
+Conditions:
+  CreateCognitoResources: !Equals [!Ref CognitoEnabled, 'true']
+
+Outputs:
+  ApiUrl:
+    Description: URL of the API Gateway endpoint
+    Value: !Sub 'https://${TravelAssistantApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}'
+
+  ChatApiEndpoint:
+    Description: Chat API endpoint URL
+    Value: !Sub 'https://${TravelAssistantApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/chat'
+
+  IdeationApiEndpoint:
+    Description: Ideation API endpoint URL
+    Value: !Sub 'https://${TravelAssistantApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/ideation'
+
+  AvailabilityApiEndpoint:
+    Description: Availability API endpoint URL
+    Value: !Sub 'https://${TravelAssistantApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/availability'
+
+  BookingApiEndpoint:
+    Description: Booking API endpoint URL
+    Value: !Sub 'https://${TravelAssistantApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/booking'
+
+  BookingsQAApiEndpoint:
+    Description: Bookings Q&A API endpoint URL
+    Value: !Sub 'https://${TravelAssistantApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/bookings-qa'
+
+  FAQBucketName:
+    Description: S3 bucket for FAQ documents
+    Value: !Ref FAQBucket
+
+  KnowledgeBucketName:
+    Description: S3 bucket for knowledge base documents
+    Value: !Ref KnowledgeBucket
+
+  BookingsBucketName:
+    Description: S3 bucket for booking data
+    Value: !Ref BookingsBucket
+
+  UserPoolId:
+    Condition: CreateCognitoResources
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+
+  UserPoolClientId:
+    Condition: CreateCognitoResources
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
